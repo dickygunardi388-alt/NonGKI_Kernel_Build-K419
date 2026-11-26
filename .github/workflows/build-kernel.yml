@@ -276,6 +276,8 @@ jobs:
                     sed -i 's/^CONFIG_KSU=.*/CONFIG_KSU=y/' "$CONFIG_FILE"
                 else
                     echo 'CONFIG_KSU=y' >> "$CONFIG_FILE"
+                    echo 'CONFIG_KSU_TAMPER_SYSCALL_TABLE=y' >> "$CONFIG_FILE"
+                    echo 'CONFIG_SUSFS=y' >> "$CONFIG_FILE"
                 fi
             fi
             if [ "${{ env.ADD_KPROBES_CONFIG }}" = true ] && [ "${{ env.KSU_HOOKS_PATCH }}" != true ]; then
