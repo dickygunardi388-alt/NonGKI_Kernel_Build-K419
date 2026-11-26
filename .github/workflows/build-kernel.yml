@@ -276,7 +276,7 @@ jobs:
                     sed -i 's/^CONFIG_KSU=.*/CONFIG_KSU=y/' "$CONFIG_FILE"
                 else
                     echo 'CONFIG_KSU=y' >> "$CONFIG_FILE"
-                    echo 'CONFIG_KSU_TAMPER_SYSCALL_TABLE=y' >> "$CONFIG_FILE"
+                    echo 'CONFIG_KSU_HACK_ARM64_BRANCH_LINK=y' >> "$CONFIG_FILE"
                     echo 'CONFIG_SUSFS=y' >> "$CONFIG_FILE"
                 fi
             fi
