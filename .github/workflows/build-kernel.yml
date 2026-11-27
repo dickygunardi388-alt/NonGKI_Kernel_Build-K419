@@ -277,7 +277,6 @@ jobs:
                 else
                     echo 'CONFIG_KSU=y' >> "$CONFIG_FILE"
                     echo 'CONFIG_KSU_HACK_ARM64_BRANCH_LINK=y' >> "$CONFIG_FILE"
-                    echo 'CONFIG_SUSFS=y' >> "$CONFIG_FILE"
                 fi
             fi
             if [ "${{ env.ADD_KPROBES_CONFIG }}" = true ] && [ "${{ env.KSU_HOOKS_PATCH }}" != true ]; then
@@ -286,6 +285,85 @@ jobs:
                 echo 'CONFIG_HAVE_KPROBES=y' >> "$CONFIG_FILE"
                 echo 'CONFIG_KPROBE_EVENTS=y' >> "$CONFIG_FILE"
             fi
+        fi
+
+        # ---- SUSFS ----
+        # Dulu CONFIG_SUSFS=y hanya ditulis kalau KSU_HOOKS_PATCH=true dan nama symbol-nya salah.
+        # Sekarang: aktifkan CONFIG_KSU_SUSFS* yang benar-benar ada di Kconfig KernelSU.
+        if [ "${{ env.ENABLE_KERNELSU }}" = true ] && [ "${{ env.ENABLE_SUSFS }}" = true ]; then
+            KSU_KCONFIG="drivers/kernelsu/Kconfig"
+            if [ ! -f fs/susfs.c ] || ! grep -q 'CONFIG_KSU_SUSFS' fs/Makefile; then
+                echo "::error::fs/susfs.c atau baris susfs.o di fs/Makefile tidak ada di source kernel"
+                exit 1
+            fi
+            if [ ! -f "$KSU_KCONFIG" ]; then
+                echo "::error::$KSU_KCONFIG tidak ada (setup KernelSU gagal?)"
+                exit 1
+            fi
+            if ! grep -qE '^config KSU_SUSFS$' "$KSU_KCONFIG"; then
+                echo "::warning::Kconfig KernelSU tidak mendefinisikan KSU_SUSFS, menambahkan definisi sendiri"
+                cat >> "$KSU_KCONFIG" <<'KCONF'
+
+        menu "KernelSU - SUSFS"
+        config KSU_SUSFS
+        	bool "KernelSU addon - SUSFS"
+        	depends on KSU
+        	default y
+        config KSU_SUSFS_SUS_PATH
+        	bool "SUS_PATH"
+        	depends on KSU_SUSFS
+        	default y
+        config KSU_SUSFS_SUS_MOUNT
+        	bool "SUS_MOUNT"
+        	depends on KSU_SUSFS
+        	default y
+        config KSU_SUSFS_SUS_KSTAT
+        	bool "SUS_KSTAT"
+        	depends on KSU_SUSFS
+        	default y
+        config KSU_SUSFS_SUS_MAP
+        	bool "SUS_MAP"
+        	depends on KSU_SUSFS
+        	default y
+        config KSU_SUSFS_SPOOF_UNAME
+        	bool "SPOOF_UNAME"
+        	depends on KSU_SUSFS
+        	default y
+        config KSU_SUSFS_ENABLE_LOG
+        	bool "ENABLE_LOG"
+        	depends on KSU_SUSFS
+        	default y
+        config KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+        	bool "HIDE_KSU_SUSFS_SYMBOLS"
+        	depends on KSU_SUSFS
+        	default y
+        config KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+        	bool "SPOOF_CMDLINE_OR_BOOTCONFIG"
+        	depends on KSU_SUSFS
+        	default y
+        config KSU_SUSFS_OPEN_REDIRECT
+        	bool "OPEN_REDIRECT"
+        	depends on KSU_SUSFS
+        	default y
+        config KSU_SUSFS_PRIORITY_UID_FILTER
+        	bool "PRIORITY_UID_FILTER"
+        	depends on KSU_SUSFS
+        	default y
+        endmenu
+        KCONF
+            fi
+            sed -i '/^CONFIG_KSU=/d;/^# CONFIG_KSU is not set/d' "$CONFIG_FILE"
+            echo 'CONFIG_KSU=y' >> "$CONFIG_FILE"
+            for sym in KSU_SUSFS KSU_SUSFS_SUS_PATH KSU_SUSFS_SUS_MOUNT KSU_SUSFS_SUS_KSTAT KSU_SUSFS_SUS_MAP \
+                       KSU_SUSFS_SPOOF_UNAME KSU_SUSFS_ENABLE_LOG KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
+                       KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG KSU_SUSFS_OPEN_REDIRECT KSU_SUSFS_PRIORITY_UID_FILTER; do
+                if grep -qE "^config ${sym}$" "$KSU_KCONFIG"; then
+                    sed -i "/^CONFIG_${sym}=/d;/^# CONFIG_${sym} is not set/d" "$CONFIG_FILE"
+                    echo "CONFIG_${sym}=y" >> "$CONFIG_FILE"
+                else
+                    echo "::warning::${sym} tidak ada di Kconfig KernelSU, dilewati"
+                fi
+            done
         fi
 
         if [ "${{ env.ADD_OVERLAYFS_CONFIG }}" = true ]; then
@@ -380,6 +458,16 @@ jobs:
             make O=out ARCH=${{ env.KERNEL_ARCH }} CC=gcc ${{ env.EXTRA_CMDS }} olddefconfig
         else
             make O=out ARCH=${{ env.KERNEL_ARCH }} CC=clang ${{ env.EXTRA_CMDS }} olddefconfig
+        fi
+
+        # Pastikan SUSFS benar-benar aktif setelah Kconfig diselesaikan
+        if [ "${{ env.ENABLE_KERNELSU }}" = true ] && [ "${{ env.ENABLE_SUSFS }}" = true ]; then
+            echo "---- CONFIG_KSU* di out/.config ----"
+            grep -E '^CONFIG_KSU' out/.config || true
+            if ! grep -q '^CONFIG_KSU_SUSFS=y' out/.config; then
+                echo "::error::CONFIG_KSU_SUSFS tidak aktif setelah olddefconfig (cek dependensi Kconfig, mis. THREAD_INFO_IN_TASK)"
+                exit 1
+            fi
         fi
 
         if [ "${{ env.ENABLE_CCACHE }}" = "true" ]; then
